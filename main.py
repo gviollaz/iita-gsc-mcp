@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, List
 
+import uvicorn
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -206,4 +207,4 @@ async def gsc_sitemaps(params: SitemapsInput) -> str:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     logger.info(f"Starting IITA GSC MCP on port {port}")
-    mcp.run(transport="sse", port=port)
+    uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=port)
