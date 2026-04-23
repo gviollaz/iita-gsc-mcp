@@ -4,12 +4,10 @@ Provides Search Console data via MCP protocol.
 """
 
 import os
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List
 
-import uvicorn
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -19,6 +17,7 @@ from google.oauth2.credentials import Credentials
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("iita-gsc-mcp")
 
+PORT = int(os.environ.get("PORT", 8080))
 SITE_URL = os.environ.get("GSC_SITE_URL", "https://iita.com.ar/")
 CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -29,7 +28,7 @@ SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
 def _get_service():
     creds = Credentials(token=None, refresh_token=REFRESH_TOKEN, client_id=CLIENT_ID,
                         client_secret=CLIENT_SECRET, token_uri=TOKEN_URI, scopes=SCOPES)
-    return build("searchconsole", "v1", credentials=creds)
+    return build("searchconsole", "v1", credentials=creds, cache_discovery=False)
 
 def _resolve_dates(date_range, start_date, end_date):
     if start_date and end_date: return start_date, end_date
@@ -54,7 +53,13 @@ def _format_table(rows, columns):
         lines.append("| " + " | ".join(vals) + " |")
     return "\n".join(lines)
 
-mcp = FastMCP("iita_gsc_mcp")
+mcp = FastMCP(
+    "iita_gsc_mcp",
+    host="0.0.0.0",
+    port=PORT,
+    stateless_http=True,
+    json_response=False,
+)
 
 class SearchQueriesInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -205,6 +210,5 @@ async def gsc_sitemaps(params: SitemapsInput) -> str:
     return f"### Search Console -- Sitemaps\n**Site**: {site}\n\n" + _format_table(rows, ["path","type","submitted","downloaded","warnings","errors"])
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    logger.info(f"Starting IITA GSC MCP on port {port}")
-    uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=port)
+    logger.info(f"Starting IITA GSC MCP on 0.0.0.0:{PORT} (streamable HTTP at /mcp)")
+    mcp.run(transport="streamable-http")
