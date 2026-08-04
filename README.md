@@ -4,6 +4,10 @@ MCP server providing Search Console data for SEO analysis of iita.com.ar.
 
 ---
 
+> ⚠️ **El deploy está caído (502) al 2026-08-04 y la autenticación NO está activa.**
+> Estado real, causa diagnosticada y pasos pendientes: **[PENDIENTES.md](PENDIENTES.md)**.
+> Leelo antes de tocar el deploy.
+
 ## ⚠️ Autenticación (cambió en v0.2.0)
 
 Hasta la v0.1 este servidor **respondía sin autenticación**: cualquiera que
