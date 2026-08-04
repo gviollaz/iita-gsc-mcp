@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field, ConfigDict
 
 from googleapiclient.discovery import build
@@ -24,6 +25,9 @@ CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
+
+# Railway's generated domain for this service.
+KNOWN_PUBLIC_HOST = "web-production-f5d12.up.railway.app"
 
 def _get_service():
     creds = Credentials(token=None, refresh_token=REFRESH_TOKEN, client_id=CLIENT_ID,
@@ -53,12 +57,43 @@ def _format_table(rows, columns):
         lines.append("| " + " | ".join(vals) + " |")
     return "\n".join(lines)
 
+def _allowed_hosts():
+    """Hosts accepted by the DNS-rebinding check.
+
+    KNOWN_PUBLIC_HOST is kept alongside RAILWAY_PUBLIC_DOMAIN because that
+    variable is not guaranteed to be present in every Railway service.
+    """
+    allow = ["127.0.0.1", "localhost", "127.0.0.1:*", "localhost:*"]
+    extra = os.environ.get("MCP_ALLOWED_HOSTS", "").strip()
+    if extra:
+        allow += [h.strip() for h in extra.split(",") if h.strip()]
+    for key in ("RAILWAY_PUBLIC_DOMAIN", "RAILWAY_STATIC_URL"):
+        val = os.environ.get(key, "").strip()
+        if val:
+            host = val.replace("https://", "").replace("http://", "").strip("/")
+            if host and host not in allow:
+                allow.append(host)
+    if KNOWN_PUBLIC_HOST not in allow:
+        allow.append(KNOWN_PUBLIC_HOST)
+    return allow
+
+
+# Escape hatch: if Railway's domain changes and requests start getting 421,
+# set MCP_DNS_REBINDING_PROTECTION=false. Authentication is unaffected.
+_transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=os.environ.get(
+        "MCP_DNS_REBINDING_PROTECTION", "true"
+    ).strip().lower() in ("true", "1", "yes"),
+    allowed_hosts=_allowed_hosts(),
+)
+
 mcp = FastMCP(
     "iita_gsc_mcp",
     host="0.0.0.0",
     port=PORT,
     stateless_http=True,
     json_response=False,
+    transport_security=_transport_security,
 )
 
 class SearchQueriesInput(BaseModel):
@@ -210,5 +245,10 @@ async def gsc_sitemaps(params: SitemapsInput) -> str:
     return f"### Search Console -- Sitemaps\n**Site**: {site}\n\n" + _format_table(rows, ["path","type","submitted","downloaded","warnings","errors"])
 
 if __name__ == "__main__":
-    logger.info(f"Starting IITA GSC MCP on 0.0.0.0:{PORT} (streamable HTTP at /mcp)")
-    mcp.run(transport="streamable-http")
+    # Deliberately not calling mcp.run() here. Doing so serves /mcp with no
+    # authentication, which is exactly the hole fixed in v0.2.0. server.py is
+    # the only supported entry point; it wraps this app with auth middleware.
+    raise SystemExit(
+        "Run `python server.py` (or `uvicorn server:app`), not main.py. "
+        "main.py only defines the tools; server.py adds authentication."
+    )
