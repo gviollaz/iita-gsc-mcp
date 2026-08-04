@@ -334,8 +334,11 @@ def build_app() -> Starlette:
 
 
 def _setup_logging() -> None:
+    # An unrecognized level makes basicConfig raise ValueError at import time,
+    # which crash-loops the deploy over a logging setting. Fall back instead.
+    level = LOG_LEVEL if LOG_LEVEL in logging.getLevelNamesMapping() else "INFO"
     logging.basicConfig(
-        level=LOG_LEVEL,
+        level=level,
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
         stream=sys.stderr,
     )
@@ -345,10 +348,22 @@ _setup_logging()
 app = build_app()
 
 
+def _uvicorn_log_level() -> str:
+    # uvicorn accepts a fixed set of names and raises KeyError on anything else,
+    # killing the process at startup. Python's logging accepts "WARN" as an
+    # alias for "WARNING"; uvicorn does not. Normalize, and fall back to "info"
+    # for any unrecognized value so a bad LOG_LEVEL can't crash-loop the deploy.
+    allowed = {"critical", "error", "warning", "info", "debug", "trace"}
+    lvl = LOG_LEVEL.lower()
+    if lvl == "warn":
+        lvl = "warning"
+    return lvl if lvl in allowed else "info"
+
+
 def main_entry() -> None:
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level=LOG_LEVEL.lower())
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level=_uvicorn_log_level())
 
 
 if __name__ == "__main__":
