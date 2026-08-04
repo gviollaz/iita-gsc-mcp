@@ -245,10 +245,11 @@ async def gsc_sitemaps(params: SitemapsInput) -> str:
     return f"### Search Console -- Sitemaps\n**Site**: {site}\n\n" + _format_table(rows, ["path","type","submitted","downloaded","warnings","errors"])
 
 if __name__ == "__main__":
-    # Deliberately not calling mcp.run() here. Doing so serves /mcp with no
-    # authentication, which is exactly the hole fixed in v0.2.0. server.py is
-    # the only supported entry point; it wraps this app with auth middleware.
-    raise SystemExit(
-        "Run `python server.py` (or `uvicorn server:app`), not main.py. "
-        "main.py only defines the tools; server.py adds authentication."
-    )
+    # Never call mcp.run() here: that serves /mcp with no authentication, which
+    # is the hole fixed in v0.2.0. Delegate to server.py instead, so that a
+    # stale `python main.py` start command (what the Dockerfile used before
+    # v0.2.0) still boots a server that requires credentials, rather than
+    # aborting and leaving the service in a crash loop.
+    from server import main_entry
+
+    main_entry()
